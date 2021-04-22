@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/rand"
+	"sync"
 	"time"
 )
 
@@ -11,8 +12,8 @@ func (b *Bench) DoBench(count int){
 	// every 5 seconds, we pick a random node
 	// give it 1MB of data, and see how long it takes all others
 	// to resolve the CID of it
-	interval := 5*time.Second
-	size := 10
+	interval := 1*time.Second
+	size := 1024
 	for i:=0;i<=count;i++{ // do "count" benchmarks
 		numnodes := len(b.nodes)
 		source := rand.Int() % numnodes
@@ -52,6 +53,7 @@ func (b *Bench) DoBench(count int){
 		}
 
 		go func(cid string,l int) {
+			startTime := time.Now()
 			for {
 				// got it at this point
 				b.countsLock.Lock()
@@ -66,11 +68,39 @@ func (b *Bench) DoBench(count int){
 				b.countsLock.Unlock()
 				time.Sleep(1*time.Second)
 			}
+			b.l.WithField("source","bench").WithField("cid",cid).WithField("time_until_synced",time.Since(startTime)).Info("Count done")
 		}(cid,len(others))
 
 
 		time.Sleep(interval)
 	}
+
+}
+
+func (b *Bench) Spam(count int){
+	size := 1 // 1kb
+	wg := sync.WaitGroup{}
+	for i:=0;i<=count;i++{ // do "count" benchmarks
+		numnodes := len(b.nodes)
+		wg.Add(1)
+		source := rand.Int() % numnodes
+		var sourceNode *IPFS
+		i :=0
+		// pick a random node as source
+		for _,a := range b.nodes {
+			if i == source {
+				sourceNode = a
+			}
+			i++
+		}
+		// make a 1kb cid and pin it on one node
+		go func(sourceNode *IPFS) {
+			sourceNode.MakeRandomObject(size)
+			wg.Done()
+		}(sourceNode)
+	}
+
+	time.Sleep(10*time.Second)
 
 }
 

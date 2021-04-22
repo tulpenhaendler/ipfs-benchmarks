@@ -73,7 +73,7 @@ func (c *Config) GetInstances() []Instances {
 				Region: a.Region,
 				Count: 1,
 			})
-			if i > a.Count {
+			if i >= a.Count {
 				break
 			}
 			i++

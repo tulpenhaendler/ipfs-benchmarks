@@ -23,7 +23,7 @@ func main(){
 		if err != nil {
 			log.Panic(err)
 		}
-		hook, err := elogrus.NewAsyncElasticHook(client, "localhost", logrus.DebugLevel, "mylog")
+		hook, err := elogrus.NewAsyncElasticHook(client, "localhost", logrus.DebugLevel, "ipfsbench")
 		if err != nil {
 			log.Panic(err)
 		}
@@ -38,7 +38,7 @@ func main(){
 		l.SetOutput(mw)
 		l.AddHook(hook)
 		l.SetFormatter(&logrus.JSONFormatter{})
-		return l.WithField("starttime",time.Now()).WithField("runId",RandStringRunes(8))
+		return l.WithField("starttime",time.Now()).WithField("runId","two")
 	})
 
 

@@ -64,7 +64,7 @@ func (i *IPFS) CanGetCid(hash string) bool {
 // size in MB
 func (i *IPFS) MakeRandomObject(size int) string {
 	rand.Seed(time.Now().UnixNano())
-	data := make([]byte, 1024*1024*size)
+	data := make([]byte, 1024*size)
 	rand.Read(data)
 	cid,e := i.sh.Add(bytes.NewBuffer(data))
 	if e != nil {
