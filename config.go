@@ -13,8 +13,8 @@ type Config struct {
 
 
 type Nodes struct {
-	Instances []Instances `yaml:"instances"`
-	Instance  string      `yaml:"instance"`
+	Instances    []Instances `yaml:"instances"`
+	InstanceType string      `yaml:"instanceType"`
 }
 
 type Instances struct {

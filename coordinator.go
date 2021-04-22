@@ -11,12 +11,15 @@ type Bench struct {
 	c *Config
 	l *logrus.Entry
 	id string
+	orignalLog *logrus.Entry
 
 	// step1: make keyfiles
 	names     map[string]string
 	keys      map[string]*ec2.CreateKeyPairOutput
 	instances map[string]string //ips
 	sgs       map[string]*string // security group id
+	nodes     map[string]*IPFS
+	webuiport int
 }
 
 
@@ -29,6 +32,8 @@ func NewBench(l *logrus.Entry, c *Config, aws *AWSWrapper) *Bench {
 	b.keys = map[string]*ec2.CreateKeyPairOutput{}
 	b.instances = map[string]string{}
 	b.sgs = map[string]*string{}
+	b.webuiport = 55001
+	b.orignalLog = l
 	return &b
 }
 

@@ -48,4 +48,7 @@ nodes:
     #  region: me-south-1
     #- count: 1
     #  region: sa-east-1
-  instance: m4.large
+  instanceType: m4.large
+
+# command to start the IPFS node
+RunCmd: "docker run -d --name ipfs-node -p 4001:4001 -p 5001:5001 -p 8080:8080 ipfs/go-ipfs:latest"

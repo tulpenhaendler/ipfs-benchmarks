@@ -6,7 +6,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/sirupsen/logrus"
+	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 	"golang.org/x/crypto/ssh"
@@ -25,19 +27,19 @@ func (b *Bench) Run(){
 }
 
 func (b *Bench) makeKeyfiles(){
-	instances := b.c.Nodes.Instances
+	regions := b.c.GetRegions()
 	wg := sync.WaitGroup{}
-	wg.Add(len(instances))
+	wg.Add(len(regions))
 
 	kl := &sync.Mutex{}
-	for _,a := range instances {
-		go func(region, name  string,lock *sync.Mutex) {
+	for _,a := range regions {
+		go func(region string,lock *sync.Mutex) {
 			log := b.l.WithField("region",region).WithField("step","keygen")
 			log.Trace("Start keygen")
 			session := b.aws.GetRegion(region)
 			client := ec2.New(session)
 			input := ec2.CreateKeyPairInput{
-				KeyName: aws.String(name),
+				KeyName: aws.String("ipfsbench"),
 			}
 			keyz,e := client.CreateKeyPair(&input)
 			if e != nil {
@@ -45,11 +47,11 @@ func (b *Bench) makeKeyfiles(){
 			}
 			kl.Lock()
 			defer kl.Unlock()
-			b.keys[name] = keyz
+			b.keys[region] = keyz
 			wg.Done()
 			log.Info("create key success")
 
-		}(a.Region,a.Name,kl)
+		}(a,kl)
 	}
 
 	wg.Wait()
@@ -131,12 +133,11 @@ func (b *Bench) makeInstances(){
 	instances := b.c.Nodes.Instances
 	wg := sync.WaitGroup{}
 	wg.Add(len(instances))
-
 	kl := &sync.Mutex{}
 	for _,a := range instances {
-		go func(region, name, instance  string,lock *sync.Mutex) {
-			log := b.l.WithField("region",region).WithField("step","instanceup").WithField("instance",name)
-			log.Trace("Start make instance")
+		go func(region, name, instanceType string,lock *sync.Mutex) {
+			log := b.l.WithField("region",region).WithField("step","instanceup").WithField("instanceType",name)
+			log.Trace("Start make instanceType")
 			session := b.aws.GetRegion(region)
 			client := ec2.New(session)
 			ssmc := ssm.New(session)
@@ -146,12 +147,13 @@ func (b *Bench) makeInstances(){
 			}
 			ami,_ := ssmc.GetParameter(&pi)
 
-			// Specify the details of the instance that you want to create.
+			// Specify the details of the instanceType that you want to create.
 			runResult, err := client.RunInstances(&ec2.RunInstancesInput{
 				ImageId:      ami.Parameter.Value,
-				InstanceType: aws.String(instance),
+				InstanceType: aws.String(instanceType),
 				MinCount:     aws.Int64(1),
 				MaxCount:     aws.Int64(1),
+				KeyName: b.keys[region].KeyName,
 				SecurityGroups: []*string{aws.String("ipfsbench")},
 				BlockDeviceMappings: []*ec2.BlockDeviceMapping{
 					&ec2.BlockDeviceMapping{
@@ -165,15 +167,16 @@ func (b *Bench) makeInstances(){
 			})
 
 			if err != nil {
-				log.Error("Could not create instance", err)
+				log.Error("Could not create instanceType", err)
 				os.Exit(1)
 				return
 			}
 
-			log.Info("Created instance ", *runResult.Instances[0].InstanceId)
+			log.Info("Created instanceType ", *runResult.Instances[0].InstanceId)
 
 
-			// Add tags to the created instance
+			time.Sleep(1*time.Second)
+			// Add tags to the created instanceType
 			_, errtag := client.CreateTags(&ec2.CreateTagsInput{
 				Resources: []*string{runResult.Instances[0].InstanceId},
 				Tags: []*ec2.Tag{
@@ -184,7 +187,7 @@ func (b *Bench) makeInstances(){
 				},
 			})
 			if errtag != nil {
-				log.Error("Could not create tags for instance", runResult.Instances[0].InstanceId, errtag)
+				log.Error("Could not create tags for instanceType", runResult.Instances[0].InstanceId, errtag)
 				os .Exit(1)
 			}
 
@@ -207,9 +210,9 @@ func (b *Bench) makeInstances(){
 			defer kl.Unlock()
 			b.instances[name] = ip
 			wg.Done()
-			log.Info("Instance created with IP ",ip)
+			log.Info("InstanceType created with IP ",ip)
 
-		}(a.Region,a.Name,b.c.Nodes.Instance, kl)
+		}(a.Region,a.Name,b.c.Nodes.InstanceType, kl)
 	}
 
 	wg.Wait()
@@ -227,7 +230,7 @@ func (b *Bench) installIPFSNode(){
 			log.Trace("Start Install IPFS")
 
 			ip := b.instances[name]
-			key := b.keys[name]
+			key := b.keys[region]
 			signer,_ := signerFromPem([]byte(*key.KeyMaterial),[]byte{})
 
 
@@ -246,25 +249,51 @@ func (b *Bench) installIPFSNode(){
 
 			log.Info("Wait for ssh access...")
 			for {
-				time.Sleep(100*time.Second)
-				_,e := sshClient.RunCommand("ls /")
-				if e != nil {
+				time.Sleep(5*time.Second)
+				_,e := sshClient.RunCommand("whoami")
+				if e == nil {
 					break
 				}
 			}
 
 			log.Info("Got ssh access")
+			log.Info("Install docker")
+			sshClient.RunCommand("sudo yum install docker -y")
+			sshClient.RunCommand("sudo service docker start")
+			sshClient.RunCommand("sudo usermod -aG docker ec2-user")
+			log.Info("Install ipfs node")
+			sshClient.RunCommand("sudo " + b.c.RunCmd)
+			// give it 20sec to start
+			time.Sleep(20*time.Second)
 
-			sshClient.RunCommand("curl https://get.docker.com | bash")
-			sshClient.RunCommand("usermod -aG docker ec2-user")
+			// setup webui prot forward:
+			kl.Lock()
+			defer kl.Unlock()
+			local := "127.0.0.1:" + strconv.Itoa(b.webuiport)
+			b.webuiport++
+			localListener, err := net.Listen("tcp", local)
+			if err != nil {
+				log.Fatalf("net.Listen failed: %v", err)
+			}
+			localConn, err := localListener.Accept()
+			if err != nil {
+				log.Fatalf("listen.Accept failed: %v", err)
+			}
+			go forward(localConn, sshConfig, ip + ":22", "127.0.0.1:5001")
 
+			log.Info("Forwarding Webui on port: ",local)
 
-
+			kl.Lock()
+			defer kl.Unlock()
+			b.nodes[name] = NewIpfs(fmt.Sprintf("%v:%v", ip, 22),name,b.orignalLog)
+			b.nodes[name].Init()
 			wg.Done()
 			log.Info("IPFS installed and running on: ",ip)
 
-		}(a.Region,a.Name,b.c.Nodes.Instance, kl)
+		}(a.Region,a.Name,b.c.Nodes.InstanceType, kl)
 	}
 
 	wg.Wait()
+
+	time.Sleep(100*time.Second)
 }

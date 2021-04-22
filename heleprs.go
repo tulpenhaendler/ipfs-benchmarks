@@ -6,32 +6,30 @@ import (
 	"errors"
 	"fmt"
 	"golang.org/x/crypto/ssh"
+	"io"
+	"log"
+	"net"
 )
 
 func signerFromPem(pemBytes []byte, password []byte) (ssh.Signer, error) {
 
-	// read pem block
 	err := errors.New("Pem decode failed, no key found")
 	pemBlock, _ := pem.Decode(pemBytes)
 	if pemBlock == nil {
 		return nil, err
 	}
 
-	// handle encrypted key
 	if x509.IsEncryptedPEMBlock(pemBlock) {
-		// decrypt PEM
 		pemBlock.Bytes, err = x509.DecryptPEMBlock(pemBlock, []byte(password))
 		if err != nil {
 			return nil, fmt.Errorf("Decrypting PEM block failed %v", err)
 		}
 
-		// get RSA, EC or DSA key
 		key, err := parsePemBlock(pemBlock)
 		if err != nil {
 			return nil, err
 		}
 
-		// generate signer instance from key
 		signer, err := ssh.NewSignerFromKey(key)
 		if err != nil {
 			return nil, fmt.Errorf("Creating signer from encrypted key failed %v", err)
@@ -39,7 +37,6 @@ func signerFromPem(pemBytes []byte, password []byte) (ssh.Signer, error) {
 
 		return signer, nil
 	} else {
-		// generate signer instance from plain key
 		signer, err := ssh.ParsePrivateKey(pemBytes)
 		if err != nil {
 			return nil, fmt.Errorf("Parsing plain private key failed %v", err)
@@ -88,25 +85,47 @@ func parsePemBlock(block *pem.Block) (interface{}, error) {
 }
 
 
-// Opens a new SSH connection and runs the specified command
-// Returns the combined output of stdout and stderr
 func (s *SshClient) RunCommand(cmd string) (string, error) {
-	// open connection
 	conn, err := ssh.Dial("tcp", s.Server, s.Config)
 	if err != nil {
 		return "", fmt.Errorf("Dial to %v failed %v", s.Server, err)
 	}
 	defer conn.Close()
 
-	// open session
 	session, err := conn.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("Create session for %v failed %v", s.Server, err)
 	}
 	defer session.Close()
 
-	// run command and capture stdout/stderr
 	output, err := session.CombinedOutput(cmd)
 
 	return fmt.Sprintf("%s", output), err
 }
+
+
+
+func forward(localConn net.Conn, config *ssh.ClientConfig, serverAddrString string, remoteAddrString string) {
+	sshClientConn, err := ssh.Dial("tcp", serverAddrString, config)
+	if err != nil {
+		log.Fatalf("ssh.Dial failed: %s", err)
+	}
+
+	sshConn, err := sshClientConn.Dial("tcp", remoteAddrString)
+
+	go func() {
+		_, err = io.Copy(sshConn, localConn)
+		if err != nil {
+			log.Fatalf("io.Copy failed: %v", err)
+		}
+	}()
+
+	go func() {
+		_, err = io.Copy(localConn, sshConn)
+		if err != nil {
+			log.Fatalf("io.Copy failed: %v", err)
+		}
+	}()
+}
+
+

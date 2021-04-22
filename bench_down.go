@@ -21,19 +21,19 @@ func (b *Bench) Delete(){
 }
 
 func (b *Bench) deleteKeyfiles(){
-	instances := b.c.Nodes.Instances
+	regions := b.c.GetRegions()
 	wg := sync.WaitGroup{}
-	wg.Add(len(instances))
+	wg.Add(len(regions))
 
 	kl := &sync.Mutex{}
-	for _,a := range instances {
-		go func(region, name  string,lock *sync.Mutex) {
+	for _,a := range regions {
+		go func(region string,lock *sync.Mutex) {
 			log := b.l.WithField("region",region).WithField("step","keygen")
 			log.Trace("Start keygen")
 			session := b.aws.GetRegion(region)
 			client := ec2.New(session)
 			input := ec2.DeleteKeyPairInput{
-				KeyName: aws.String(name),
+				KeyName: aws.String("ipfsbench"),
 			}
 			_,e := client.DeleteKeyPair(&input)
 			if e != nil {
@@ -42,26 +42,26 @@ func (b *Bench) deleteKeyfiles(){
 			wg.Done()
 			log.Info("delete key success")
 
-		}(a.Region,a.Name,kl)
+		}(a,kl)
 	}
 
 	wg.Wait()
 }
 
 func (b *Bench) deleteSecurityGroups(){
-	instances := b.c.Nodes.Instances
+	regions := b.c.GetRegions()
 	wg := sync.WaitGroup{}
-	wg.Add(len(instances))
+	wg.Add(len(regions))
 
 	kl := &sync.Mutex{}
-	for _,a := range instances {
-		go func(region, name  string,lock *sync.Mutex) {
+	for _,a := range regions {
+		go func(region string,lock *sync.Mutex) {
 			log := b.l.WithField("region",region).WithField("step","make_security_group")
-			log.Trace("Start keygen")
+			log.Trace("Start sg")
 			session := b.aws.GetRegion(region)
 			client := ec2.New(session)
 			input := ec2.DeleteSecurityGroupInput{
-				GroupName: aws.String(name),
+				GroupName: aws.String("ipfsbench"),
 			}
 			_,e := client.DeleteSecurityGroup(&input)
 			if e != nil {
@@ -71,7 +71,7 @@ func (b *Bench) deleteSecurityGroups(){
 			wg.Done()
 			log.Info("delete SG success")
 
-		}(a.Region,a.Name,kl)
+		}(a,kl)
 	}
 
 	wg.Wait()
