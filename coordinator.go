@@ -13,8 +13,10 @@ type Bench struct {
 	id string
 
 	// step1: make keyfiles
-	names map[string]string
-	keys map[string]*ec2.CreateKeyPairOutput
+	names     map[string]string
+	keys      map[string]*ec2.CreateKeyPairOutput
+	instances map[string]string //ips
+	sgs       map[string]*string // security group id
 }
 
 
@@ -25,6 +27,8 @@ func NewBench(l *logrus.Entry, c *Config, aws *AWSWrapper) *Bench {
 	b.id = RandStringRunes(12)
 	b.l = l.WithField("source","bench")
 	b.keys = map[string]*ec2.CreateKeyPairOutput{}
+	b.instances = map[string]string{}
+	b.sgs = map[string]*string{}
 	return &b
 }
 

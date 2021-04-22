@@ -8,12 +8,9 @@ import (
 
 type Config struct {
 	Nodes Nodes `yaml:"nodes"`
+	RunCmd string `yaml:"runCmd"`
 }
 
-type Aws struct {
-	Secret interface{} `yaml:"secret"`
-	Key    interface{} `yaml:"key"`
-}
 
 type Nodes struct {
 	Instances []Instances `yaml:"instances"`
@@ -51,6 +48,18 @@ func (c *Config) GetNumRegions() int {
 		r[a.Region] = struct{}{}
 	}
 	return len(r)
+}
+
+func (c *Config) GetRegions() []string {
+	r := map[string]struct{}{}
+	for _,a := range c.Nodes.Instances {
+		r[a.Region] = struct{}{}
+	}
+	res := []string{}
+	for a,_ := range r {
+		res  = append(res, a)
+	}
+	return res
 }
 
 func (c *Config) getNumNodes() int {

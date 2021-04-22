@@ -31,9 +31,9 @@ nodes:
     - count: 1
       name: bench_one
       region: ca-central-1
-    - count: 1
-      name: bench_two
-      region: eu-central-1
+    #- count: 1
+    #  name: bench_two
+    #  region: eu-central-1
     #- count: 1
     #  region: eu-west-1
     #- count: 1
