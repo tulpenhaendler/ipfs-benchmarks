@@ -6,12 +6,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ssm"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/crypto/ssh"
 	"net"
 	"os"
 	"strconv"
 	"sync"
 	"time"
-	"golang.org/x/crypto/ssh"
 )
 
 func (b *Bench) Run(){
@@ -130,13 +130,13 @@ func (b *Bench) makeSecurityGroups(){
 }
 
 func (b *Bench) makeInstances(){
-	instances := b.c.Nodes.Instances
+	instances := b.c.GetInstances()
 	wg := sync.WaitGroup{}
 	wg.Add(len(instances))
 	kl := &sync.Mutex{}
 	for _,a := range instances {
 		go func(region, name, instanceType string,lock *sync.Mutex) {
-			log := b.l.WithField("region",region).WithField("step","instanceup").WithField("instanceType",name)
+			log := b.l.WithField("region",region).WithField("step","instanceup").WithField("instance",name)
 			log.Trace("Start make instanceType")
 			session := b.aws.GetRegion(region)
 			client := ec2.New(session)
@@ -167,7 +167,8 @@ func (b *Bench) makeInstances(){
 			})
 
 			if err != nil {
-				log.Error("Could not create instanceType", err)
+				time.Sleep(15*time.Second)
+				log.Error("Could not create instance", err)
 				os.Exit(1)
 				return
 			}
@@ -187,7 +188,8 @@ func (b *Bench) makeInstances(){
 				},
 			})
 			if errtag != nil {
-				log.Error("Could not create tags for instanceType", runResult.Instances[0].InstanceId, errtag)
+				time.Sleep(15*time.Second)
+				log.Error("Could not create tags for instance", runResult.Instances[0].InstanceId, errtag)
 				os .Exit(1)
 			}
 
@@ -219,7 +221,7 @@ func (b *Bench) makeInstances(){
 }
 
 func (b *Bench) installIPFSNode(){
-	instances := b.c.Nodes.Instances
+	instances := b.c.GetInstances()
 	wg := sync.WaitGroup{}
 	wg.Add(len(instances))
 
@@ -264,28 +266,36 @@ func (b *Bench) installIPFSNode(){
 			log.Info("Install ipfs node")
 			sshClient.RunCommand("sudo " + b.c.RunCmd)
 			// give it 20sec to start
-			time.Sleep(20*time.Second)
+			time.Sleep(10*time.Second)
+			sshClient.RunCommand("docker exec ipfs-node ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin  '[\"*\"]'")
+			sshClient.RunCommand("docker exec ipfs-node ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods '[\"PUT\", \"POST\"]'")
+			sshClient.RunCommand("docker restart ipfs-node")
+			time.Sleep(10*time.Second)
 
 			// setup webui prot forward:
 			kl.Lock()
 			defer kl.Unlock()
 			local := "127.0.0.1:" + strconv.Itoa(b.webuiport)
 			b.webuiport++
-			localListener, err := net.Listen("tcp", local)
-			if err != nil {
-				log.Fatalf("net.Listen failed: %v", err)
-			}
-			localConn, err := localListener.Accept()
-			if err != nil {
-				log.Fatalf("listen.Accept failed: %v", err)
-			}
-			go forward(localConn, sshConfig, ip + ":22", "127.0.0.1:5001")
+			go func() {
+				localListener, err := net.Listen("tcp", local)
+				if err != nil {
+					log.Fatalf("net.Listen failed: %v", err)
+				}
+				var sshconn *net.Conn
+				for {
+					localConn, err := localListener.Accept()
+					if err != nil {
+						log.Fatalf("listen.Accept failed: %v", err)
+					}
+					// very stupid "port forwarding" but works
+					go forward(localConn, sshconn, sshConfig, ip + ":22", "127.0.0.1:5001")
+				}
+			}()
 
 			log.Info("Forwarding Webui on port: ",local)
 
-			kl.Lock()
-			defer kl.Unlock()
-			b.nodes[name] = NewIpfs(fmt.Sprintf("%v:%v", ip, 22),name,b.orignalLog)
+			b.nodes[name] = NewIpfs(local,name,b.orignalLog)
 			b.nodes[name].Init()
 			wg.Done()
 			log.Info("IPFS installed and running on: ",ip)
@@ -295,5 +305,6 @@ func (b *Bench) installIPFSNode(){
 
 	wg.Wait()
 
-	time.Sleep(100*time.Second)
+	b.l.Info("All nodes running but we give them 1min to get their stuff in order")
+	time.Sleep(1*time.Minute)
 }

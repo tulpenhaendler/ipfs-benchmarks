@@ -105,26 +105,22 @@ func (s *SshClient) RunCommand(cmd string) (string, error) {
 
 
 
-func forward(localConn net.Conn, config *ssh.ClientConfig, serverAddrString string, remoteAddrString string) {
-	sshClientConn, err := ssh.Dial("tcp", serverAddrString, config)
-	if err != nil {
-		log.Fatalf("ssh.Dial failed: %s", err)
+func forward(localConn net.Conn, sshConn *net.Conn, config *ssh.ClientConfig, serverAddrString string, remoteAddrString string) {
+	if sshConn == nil {
+		sshClientConn, err := ssh.Dial("tcp", serverAddrString, config)
+		if err != nil {
+			log.Fatalf("ssh.Dial failed: %s", err)
+		}
+		a, err := sshClientConn.Dial("tcp", remoteAddrString)
+		sshConn = &a
 	}
 
-	sshConn, err := sshClientConn.Dial("tcp", remoteAddrString)
-
 	go func() {
-		_, err = io.Copy(sshConn, localConn)
-		if err != nil {
-			log.Fatalf("io.Copy failed: %v", err)
-		}
+		io.Copy(*sshConn, localConn)
 	}()
 
 	go func() {
-		_, err = io.Copy(localConn, sshConn)
-		if err != nil {
-			log.Fatalf("io.Copy failed: %v", err)
-		}
+		io.Copy(localConn, *sshConn)
 	}()
 }
 

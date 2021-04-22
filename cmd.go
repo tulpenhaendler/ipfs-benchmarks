@@ -21,7 +21,21 @@ func GetRunCommand(c *dig.Container) *cobra.Command {
 		Use:   "run",
 		Run: func(cmd *cobra.Command, args []string) {
 			e := c.Invoke(func(b *Bench) {
+
+				fmt.Println("\n\n-----------------------------  CLEANUP")
+
+
+				b.Delete()
+
+				fmt.Println("\n\n-----------------------------  PROVISION")
+
 				b.Run()
+
+				fmt.Println("\n\n-----------------------------  BENCHMARK TIME")
+
+				b.DoBench(100)
+
+
 			})
 			if e != nil {
 				fmt.Println(e)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	"os"
+	"strconv"
 )
 
 type Config struct {
@@ -58,6 +59,25 @@ func (c *Config) GetRegions() []string {
 	res := []string{}
 	for a,_ := range r {
 		res  = append(res, a)
+	}
+	return res
+}
+
+func (c *Config) GetInstances() []Instances {
+	res := []Instances{}
+	for _,a := range c.Nodes.Instances {
+		i := 1
+		for {
+			res = append(res, Instances{
+				Name: a.Name + "_" + strconv.Itoa(i),
+				Region: a.Region,
+				Count: 1,
+			})
+			if i > a.Count {
+				break
+			}
+			i++
+		}
 	}
 	return res
 }

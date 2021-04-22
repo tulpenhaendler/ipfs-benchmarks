@@ -4,6 +4,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/sirupsen/logrus"
 	"math/rand"
+	"sync"
 )
 
 type Bench struct {
@@ -20,6 +21,8 @@ type Bench struct {
 	sgs       map[string]*string // security group id
 	nodes     map[string]*IPFS
 	webuiport int
+	counts map[string]int
+	countsLock *sync.Mutex
 }
 
 
@@ -33,7 +36,10 @@ func NewBench(l *logrus.Entry, c *Config, aws *AWSWrapper) *Bench {
 	b.instances = map[string]string{}
 	b.sgs = map[string]*string{}
 	b.webuiport = 55001
+	b.nodes = map[string]*IPFS{}
 	b.orignalLog = l
+	b.counts = map[string]int{}
+	b.countsLock = &sync.Mutex{}
 	return &b
 }
 
