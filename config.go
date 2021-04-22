@@ -7,7 +7,6 @@ import (
 )
 
 type Config struct {
-	Aws   Aws   `yaml:"aws"`
 	Nodes Nodes `yaml:"nodes"`
 }
 
@@ -17,13 +16,14 @@ type Aws struct {
 }
 
 type Nodes struct {
-	Regions  []Instances `yaml:"instances"`
-	Instance string      `yaml:"instance"`
+	Instances []Instances `yaml:"instances"`
+	Instance  string      `yaml:"instance"`
 }
 
 type Instances struct {
 	Count  int    `yaml:"count"`
 	Region string `yaml:"region"`
+	Name string `yaml:"name"`
 }
 
 func NewConfig() *Config {
@@ -43,4 +43,16 @@ func NewConfig() *Config {
 		os.Exit(1)
 	}
 	return &c
+}
+
+func (c *Config) GetNumRegions() int {
+	r := map[string]struct{}{}
+	for _,a := range c.Nodes.Instances {
+		r[a.Region] = struct{}{}
+	}
+	return len(r)
+}
+
+func (c *Config) getNumNodes() int {
+	return len(c.Nodes.Instances)
 }
